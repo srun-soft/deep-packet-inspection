@@ -17,6 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,10 +28,8 @@ import (
 	"time"
 )
 
-var ()
-
-const closeTimeout time.Duration = time.Hour * 24 // Closing inactive: TODO: from CLI
-const timeout time.Duration = time.Minute * 5
+const closeTimeout = time.Hour * 24 // Closing inactive: TODO: from CLI
+const timeout = time.Minute * 5
 
 var stats struct {
 	ipdefrag            int
@@ -92,7 +91,7 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 			} else if h.hexdump {
 				configs.Log.Info("Body(%d/0x%x)\n%s\n", len(body), len(body), hex.Dump(body))
 			}
-			req.Body.Close()
+			_ = req.Body.Close()
 			configs.Log.Info("HTTP/%s Request: %s %s (body:%d)\n", h.ident, req.Method, req.URL, s)
 			h.parent.Lock()
 			h.parent.urls = append(h.parent.urls, req.URL.String())
@@ -121,7 +120,7 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 			if h.hexdump {
 				configs.Log.Infof("Body(%d/0x%x)\n%s\n", len(body), len(body), hex.Dump(body))
 			}
-			res.Body.Close()
+			_ = res.Body.Close()
 			sym := ","
 			if res.ContentLength > 0 && res.ContentLength != int64(s) {
 				sym = "!="
@@ -170,9 +169,9 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 				if err == nil {
 					w, err := io.Copy(f, r)
 					if _, ok := r.(*gzip.Reader); ok {
-						r.(*gzip.Reader).Close()
+						_ = r.(*gzip.Reader).Close()
 					}
-					f.Close()
+					_ = f.Close()
 					if err != nil {
 						configs.Log.Errorf("HTTP-save %s: failed to save %s (l:%d): %s\n", h.ident, target, w, err)
 					} else {
@@ -192,7 +191,7 @@ type tcpStreamFactory struct {
 	doHTTP bool
 }
 
-func (factory *tcpStreamFactory) New(net, transport gopacket.Flow, tcp *layers.TCP, ac reassembly.AssemblerContext) reassembly.Stream {
+func (factory *tcpStreamFactory) New(net, transport gopacket.Flow, tcp *layers.TCP, _ reassembly.AssemblerContext) reassembly.Stream {
 	configs.Log.WithFields(logrus.Fields{
 		"net":       net,
 		"transport": transport,
@@ -261,7 +260,7 @@ type tcpStream struct {
 	sync.Mutex
 }
 
-func (t *tcpStream) Accept(tcp *layers.TCP, ci gopacket.CaptureInfo, dir reassembly.TCPFlowDirection, nextSeq reassembly.Sequence, start *bool, ac reassembly.AssemblerContext) bool {
+func (t *tcpStream) Accept(tcp *layers.TCP, ci gopacket.CaptureInfo, dir reassembly.TCPFlowDirection, nextSeq reassembly.Sequence, start *bool, _ reassembly.AssemblerContext) bool {
 	// FSM
 	if !t.tcpstate.CheckState(tcp, dir) {
 		configs.Log.Errorf("FSM %s: Packet rejected by FSM (state:%s)\n", t.ident, t.tcpstate.String())
@@ -294,7 +293,7 @@ func (t *tcpStream) Accept(tcp *layers.TCP, ci gopacket.CaptureInfo, dir reassem
 	return accept
 }
 
-func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.AssemblerContext) {
+func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, _ reassembly.AssemblerContext) {
 	dir, start, end, skip := sg.Info()
 	length, saved := sg.Lengths()
 	// update stats
@@ -375,7 +374,7 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 	}
 }
 
-func (t *tcpStream) ReassemblyComplete(ac reassembly.AssemblerContext) bool {
+func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
 	configs.Log.Debugf("%s: Connection closed\n", t.ident)
 	if t.isHTTP {
 		close(t.client.bytes)
@@ -412,7 +411,6 @@ func init() {
 		defer handle.Close()
 	}
 	// TODO BPF filter
-
 	var dec gopacket.Decoder
 	var ok bool
 	decoderName := fmt.Sprintf("%s", handle.LinkType())
@@ -423,7 +421,6 @@ func init() {
 	source.NoCopy = true
 	configs.Log.Info("Starting to read packets\n")
 	count := 0
-	bytes := int64(0)
 	defragger := ip4defrag.NewIPv4Defragmenter()
 
 	streamFactory := &tcpStreamFactory{doHTTP: true}
@@ -436,9 +433,8 @@ func init() {
 	for packet := range source.Packets() {
 		count++
 		configs.Log.Debugf("PACKET #%d\n", count)
-		data := packet.Data()
-		bytes += int64(len(data))
-		configs.Log.Debugf("Packet content (%d/0x%x)\n%s\n", len(data), len(data), hex.Dump(data))
+		//data := packet.Data()
+		//configs.Log.Debugf("Packet content (%d/0x%x)\n%s\n", len(data), len(data), hex.Dump(data))
 
 		// defrag IPv4 packet
 		ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
@@ -462,7 +458,12 @@ func init() {
 				panic("Not a PacketBuilder")
 			}
 			nextDecoder := newip4.NextLayerType()
-			nextDecoder.Decode(newip4.Payload, pb)
+			_ = nextDecoder.Decode(newip4.Payload, pb)
+		}
+		temp := net.IPv4(10, 128, 100, 151)
+		//temp := net.IPv4(10, 120, 123, 87)
+		if newip4.SrcIP.Equal(temp) {
+			configs.Log.Infof("src ip=%s", temp)
 		}
 		tcp := packet.Layer(layers.LayerTypeTCP)
 		if tcp != nil {
@@ -488,10 +489,10 @@ func init() {
 		done := false
 		select {
 		case <-signalChan:
-			fmt.Fprintf(os.Stderr, "\nCaught SIGINT: aborting\n")
+			configs.Log.Println(os.Stderr, "\nCaught SIGINT: aborting\n")
 			done = true
 		default:
-			// NOP: contine
+			// NOP: continue
 		}
 		if done {
 			break
