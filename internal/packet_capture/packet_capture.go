@@ -16,8 +16,8 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/sirupsen/logrus"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
+	_ "github.com/srun-soft/dpi-analysis-toolkit/internal/database"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -433,8 +433,6 @@ func init() {
 	for packet := range source.Packets() {
 		count++
 		configs.Log.Debugf("PACKET #%d\n", count)
-		//data := packet.Data()
-		//configs.Log.Debugf("Packet content (%d/0x%x)\n%s\n", len(data), len(data), hex.Dump(data))
 
 		// defrag IPv4 packet
 		ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
@@ -459,11 +457,6 @@ func init() {
 			}
 			nextDecoder := newip4.NextLayerType()
 			_ = nextDecoder.Decode(newip4.Payload, pb)
-		}
-		temp := net.IPv4(10, 128, 100, 151)
-		//temp := net.IPv4(10, 120, 123, 87)
-		if newip4.SrcIP.Equal(temp) {
-			configs.Log.Infof("src ip=%s", temp)
 		}
 		tcp := packet.Layer(layers.LayerTypeTCP)
 		if tcp != nil {
