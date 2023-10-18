@@ -16,7 +16,9 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/sirupsen/logrus"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
-	_ "github.com/srun-soft/dpi-analysis-toolkit/internal/database"
+	"log"
+
+	//_ "github.com/srun-soft/dpi-analysis-toolkit/internal/database"
 	"io"
 	"net/http"
 	"net/url"
@@ -47,6 +49,11 @@ var stats struct {
 	biggestChunkPackets int
 	overlapBytes        int
 	overlapPackets      int
+	totalIntervals      int
+	totalTime           time.Duration
+	minPackage          int
+	maxPackage          int
+	sgTimestamp         []int64
 }
 
 type httpReader struct {
@@ -257,6 +264,7 @@ type tcpStream struct {
 	server         httpReader
 	urls           []string
 	ident          string
+	prevTimeStamp  time.Time
 	sync.Mutex
 }
 
@@ -293,8 +301,25 @@ func (t *tcpStream) Accept(tcp *layers.TCP, ci gopacket.CaptureInfo, dir reassem
 	return accept
 }
 
-func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, _ reassembly.AssemblerContext) {
+func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.AssemblerContext) {
 	dir, start, end, skip := sg.Info()
+	timestamp := ac.GetCaptureInfo().Timestamp
+
+	if !t.prevTimeStamp.IsZero() {
+		interval := timestamp.Sub(t.prevTimeStamp)
+		interval = interval.Truncate(0)
+		stats.totalIntervals++
+		stats.totalTime += interval
+		configs.Log.Info("interval:", interval)
+	} else {
+		if stats.totalIntervals > 0 || stats.totalTime > 0 {
+			averageTimestamp := stats.totalTime / time.Duration(stats.totalIntervals)
+			stats.sgTimestamp = append(stats.sgTimestamp, averageTimestamp.Milliseconds())
+			stats.totalTime = 0
+			stats.totalIntervals = 0
+		}
+	}
+	t.prevTimeStamp = timestamp
 	length, saved := sg.Lengths()
 	// update stats
 	sgStats := sg.Stats()
@@ -411,6 +436,10 @@ func init() {
 		defer handle.Close()
 	}
 	// TODO BPF filter
+	if err = handle.SetBPFFilter("src host 101.91.37.29"); err != nil {
+		//if err = handle.SetBPFFilter("src host 101.227.131.222"); err != nil {
+		log.Fatal("BPF filter error:", err)
+	}
 	var dec gopacket.Decoder
 	var ok bool
 	decoderName := fmt.Sprintf("%s", handle.LinkType())
@@ -423,7 +452,7 @@ func init() {
 	count := 0
 	defragger := ip4defrag.NewIPv4Defragmenter()
 
-	streamFactory := &tcpStreamFactory{doHTTP: true}
+	streamFactory := &tcpStreamFactory{doHTTP: false}
 	streamPool := reassembly.NewStreamPool(streamFactory)
 	assembler := reassembly.NewAssembler(streamPool)
 
@@ -441,7 +470,8 @@ func init() {
 		}
 		ip4 := ipv4Layer.(*layers.IPv4)
 		l := ip4.Length
-		newip4, err := defragger.DefragIPv4(ip4)
+		//newip4, err := defragger.DefragIPv4(ip4)
+		newip4, err := defragger.DefragIPv4WithTimestamp(ip4, packet.Metadata().CaptureInfo.Timestamp)
 		if err != nil {
 			configs.Log.Fatalln("Error while de-fragmenting", err)
 		} else if newip4 == nil {
@@ -524,4 +554,7 @@ func init() {
 	}
 	table.AppendBulk(data)
 	table.Render()
+	for _, i := range stats.sgTimestamp {
+		configs.Log.Info("平均包到达时间:", i)
+	}
 }
