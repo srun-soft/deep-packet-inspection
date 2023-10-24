@@ -21,11 +21,6 @@ func init() {
 	if err != nil {
 		configs.Log.Fatal("Failed to Connect MongoDB!", err)
 	}
-	defer func() {
-		if err = client.Disconnect(ctx); err != nil {
-			configs.Log.Fatal("Failed to Disconnect MongoDB!", err)
-		}
-	}()
 
 	// check connect
 	if err = client.Ping(ctx, nil); err != nil {
