@@ -1,41 +1,55 @@
 package packet_capture
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/google/gopacket"
+	"github.com/srun-soft/dpi-analysis-toolkit/configs"
+	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"net"
+	"sync"
+	"time"
 )
 
 // tls 协议
 // 通过 handshake 获取 hostname
 
-func isTLSHandshake(packet gopacket.Packet) bool {
-	payloadLayer := packet.ApplicationLayer()
-	if payloadLayer != nil {
-		// 检查有效载荷中是否包含了 TLS 握手信息的标志
-		payload := payloadLayer.Payload()
-		return len(payload) > 5 && payload[0] == 0x16 && payload[5] == 0x01
-	}
-	return false
+type tlsPayload struct {
+	payload gopacket.Payload
+	ac      gopacket.CaptureInfo
 }
 
-func extractHostnameFromTLS(packet gopacket.Packet) (string, error) {
-	payloadLayer := packet.ApplicationLayer()
-	if payloadLayer == nil {
-		return "", fmt.Errorf("not a TCP packet with payload")
+func (t *tlsPayload) run(wg *sync.WaitGroup) {
+	defer wg.Done()
+	if len(t.payload) < 42 || t.payload[0] != 0x16 || t.payload[5] != 0x01 {
+		return
 	}
-
-	// 解析 TCP 有效载荷中的TLS握手信息
-	payload := payloadLayer.Payload()
-	if len(payload) < 42 || payload[0] != 0x16 || payload[5] != 0x01 {
-		return "", fmt.Errorf("not a TLS handshake")
-	}
-
-	temp := getServerExtensionName(payload[5:])
-	fmt.Println(temp)
-	return temp, nil
+	hostname := getServerExtensionName(t.payload[5:])
+	configs.Log.Info("Server Name Indication is ", hostname)
 }
 
+type HandshakeBson struct {
+	ID     primitive.ObjectID `bson:"_id,omitempty"`
+	Host   string             `bson:"host"`
+	Domain string             `bson:"domain"`
+	Suffix string             `bson:"suffix"`
+	SrcIP  net.IP             `bson:"src_ip"`
+	DstIP  net.IP             `bson:"dst_ip"`
+}
+
+func (h *HandshakeBson) save() {
+	mongo := database.MongoDB
+	one, err := mongo.Collection(fmt.Sprintf(ProtocolHs, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), h)
+	if err != nil {
+		configs.Log.Errorf("save protocol handshake2mongo err:%s", err)
+		return
+	}
+	configs.Log.Debugf("save protocol handshake2mongo id:%s", one)
+}
+
+// 获取SNI server name indication
 func getServerExtensionName(data []byte) string {
 	// Skip past fixed-length records:
 	// 1  Handshake Type
@@ -75,8 +89,37 @@ func getServerExtensionName(data []byte) string {
 	pos += 2
 
 	/* Parse extensions to get SNI */
-	//var extensionItemLen uint16
+	var extensionItemLen int
 
 	/* Parse each 4 bytes for the extension header */
+	for pos+4 <= l {
+		extensionItemLen = int(binary.BigEndian.Uint16(data[pos+2 : pos+4]))
+		if data[pos] == 0x00 && data[pos+1] == 0x00 {
+			if (pos + 4 + extensionItemLen) > l {
+				return ""
+			}
+			// get sni string
+			pos += 6
+			extensionEnd := pos + extensionItemLen - 2
+			for pos+3 < extensionEnd {
+				serverNameLen := int(binary.BigEndian.Uint16(data[pos+1 : pos+3]))
+				if pos+3+serverNameLen > extensionEnd {
+					return ""
+				}
+
+				switch data[pos] {
+				case 0x00: //hostname
+					hostname := make([]byte, serverNameLen)
+					copy(hostname, data[pos+3:pos+3+serverNameLen])
+					return string(hostname)
+				default:
+					fmt.Println("Encountered error! Debug me...")
+				}
+
+				pos += 3 + l
+			}
+		}
+		pos += 4 + extensionItemLen
+	}
 	return ""
 }

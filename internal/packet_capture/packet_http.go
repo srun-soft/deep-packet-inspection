@@ -20,11 +20,6 @@ import (
 	"time"
 )
 
-// http 协议
-const (
-	ProtocolHttp = "protocol_http_%s"
-)
-
 type httpReader struct {
 	ident    string
 	isClient bool

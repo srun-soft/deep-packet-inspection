@@ -8,7 +8,7 @@ import (
 
 var (
 	Log     *logrus.Logger
-	Debug   = flag.Bool("debug", true, "开启调试模式 true or false")
+	Debug   = flag.Bool("debug", false, "开启调试模式 true or false")
 	Devices = flag.String("devices", "", "获取设备列表")
 	Iface   = flag.String("iface", "en0", "interface device")
 	Fname   = flag.String("fname", "", "offline filepath")
