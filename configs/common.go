@@ -13,6 +13,7 @@ var (
 	Iface   = flag.String("iface", "en0", "interface device")
 	Fname   = flag.String("fname", "", "offline filepath")
 	Output  = flag.String("output", "", "")
+	Offline bool
 )
 
 func init() {

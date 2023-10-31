@@ -42,10 +42,12 @@ func init() {
 	defer util.Run()
 	var handle *pcap.Handle
 	var err error
+	configs.Offline = false
 	if *configs.Fname != "" {
 		if handle, err = pcap.OpenOffline(*configs.Fname); err != nil {
 			configs.Log.Fatal("PCAP OpenOffline error:", err)
 		}
+		configs.Offline = true
 	} else {
 		inactive, err := pcap.NewInactiveHandle(*configs.Iface)
 		if err != nil {
@@ -99,8 +101,13 @@ func init() {
 		}
 		ip4 := ipv4Layer.(*layers.IPv4)
 		l := ip4.Length
-		//newip4, err := defragger.DefragIPv4(ip4)
-		newip4, err := defragger.DefragIPv4WithTimestamp(ip4, packet.Metadata().CaptureInfo.Timestamp)
+		var newip4 *layers.IPv4
+		if configs.Offline {
+			newip4, err = defragger.DefragIPv4WithTimestamp(ip4, packet.Metadata().CaptureInfo.Timestamp)
+		} else {
+			newip4, err = defragger.DefragIPv4(ip4)
+		}
+
 		if err != nil {
 			configs.Log.Fatalln("Error while de-fragmenting", err)
 		} else if newip4 == nil {
