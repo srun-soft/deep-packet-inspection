@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/google/gopacket"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -16,18 +15,34 @@ import (
 // tls 协议
 // 通过 handshake 获取 hostname
 
-type tlsPayload struct {
-	payload gopacket.Payload
-	ac      gopacket.CaptureInfo
+type tlsReader struct {
+	ident    string
+	hostname string
+	parent   *tcpStream
+	bytes    chan []byte
 }
 
-func (t *tlsPayload) run(wg *sync.WaitGroup) {
+func (t *tlsReader) run(wg *sync.WaitGroup) {
 	defer wg.Done()
-	if len(t.payload) < 42 || t.payload[0] != 0x16 || t.payload[5] != 0x01 {
-		return
+	fmt.Println("handshake")
+	for {
+		data, ok := <-t.bytes
+		if !ok {
+			break
+		}
+		if len(data) < 42 || data[0] != 0x16 || data[5] != 0x01 {
+			continue
+		}
+		hostname := getServerExtensionName(data[5:])
+		if len(hostname) > 0 {
+			t.parent.Lock()
+			t.parent.hostname = hostname
+			t.parent.Unlock()
+		} else {
+			continue
+		}
+		configs.Log.Warn("Server Name Indication is ", hostname)
 	}
-	hostname := getServerExtensionName(t.payload[5:])
-	configs.Log.Info("Server Name Indication is ", hostname)
 }
 
 type HandshakeBson struct {

@@ -7,13 +7,13 @@ import (
 )
 
 var (
-	Log     *logrus.Logger
-	Debug   = flag.Bool("debug", false, "开启调试模式 true or false")
-	Devices = flag.String("devices", "", "获取设备列表")
-	Iface   = flag.String("iface", "en0", "interface device")
-	Fname   = flag.String("fname", "", "offline filepath")
-	Output  = flag.String("output", "", "")
-	Offline bool
+	Log         *logrus.Logger
+	Debug       = flag.Bool("debug", false, "开启调试模式 true or false")
+	Devices     = flag.String("devices", "", "获取设备列表")
+	NIC         = flag.String("nic", "en0", "Network interface controller")
+	OfflineFile = flag.String("of", "", "offline filepath")
+	Output      = flag.String("output", "", "")
+	Offline     bool
 )
 
 func init() {

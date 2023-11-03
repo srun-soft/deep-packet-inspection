@@ -9,6 +9,7 @@ import (
 	"github.com/google/gopacket/reassembly"
 	"github.com/sirupsen/logrus"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -34,17 +35,19 @@ func (factory *tcpStreamFactory) New(net, transport gopacket.Flow, tcp *layers.T
 	configs.Log.WithFields(logrus.Fields{
 		"net":       net,
 		"transport": transport,
-	}).Debug("* NEW:")
+	}).Info("* NEW:")
 	fsmOptions := reassembly.TCPSimpleFSMOptions{SupportMissingEstablishment: true}
 	stream := &tcpStream{
 		net:        net,
 		transport:  transport,
 		isDNS:      tcp.SrcPort == 53 || tcp.DstPort == 53,
 		isHTTP:     (tcp.SrcPort == 80 || tcp.DstPort == 80) && factory.doHTTP,
+		isTLS:      tcp.DstPort == 443,
 		reversed:   tcp.SrcPort == 80,
 		tcpstate:   reassembly.NewTCPSimpleFSM(fsmOptions),
 		ident:      fmt.Sprintf("%s:%s", net, transport),
 		optchecker: reassembly.NewTCPOptionCheck(),
+		payload:    tcp.Payload,
 	}
 	if stream.isHTTP {
 		stream.client = httpReader{
@@ -63,6 +66,15 @@ func (factory *tcpStreamFactory) New(net, transport gopacket.Flow, tcp *layers.T
 		factory.wg.Add(2)
 		go stream.client.run(&factory.wg)
 		go stream.server.run(&factory.wg)
+	}
+	if stream.isTLS {
+		stream.handshake = tlsReader{
+			ident:  fmt.Sprintf("%s %s", net, transport),
+			bytes:  make(chan []byte),
+			parent: stream,
+		}
+		factory.wg.Add(1)
+		go stream.handshake.run(&factory.wg)
 	}
 	return stream
 }
@@ -85,9 +97,17 @@ type tcpStream struct {
 	reversed       bool
 	client         httpReader
 	server         httpReader
+	handshake      tlsReader
 	urls           []string
+	hostname       string
 	ident          string
 	prevTimeStamp  time.Time
+	isTLS          bool
+	payload        gopacket.Payload
+	startTime      time.Time
+	endTime        time.Time
+	upStream       int
+	downStream     int
 	sync.Mutex
 }
 
@@ -125,6 +145,7 @@ func (t *tcpStream) Accept(tcp *layers.TCP, ci gopacket.CaptureInfo, dir reassem
 }
 
 func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.AssemblerContext) {
+	configs.Log.Error("Packet count is ", COUNT)
 	dir, start, end, skip := sg.Info()
 	length, saved := sg.Lengths()
 	// update stats
@@ -158,12 +179,24 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 	} else {
 		ident = fmt.Sprintf("%v %v(%s): ", t.net.Reverse(), t.transport.Reverse(), dir)
 	}
-	configs.Log.Debugf("%s: SG reassembled packet with %d bytes (start:%v,end:%v,skip:%d,saved:%d,nb:%d,%d,overlap:%d,%d)\n", ident, length, start, end, skip, saved, sgStats.Packets, sgStats.Chunks, sgStats.OverlapBytes, sgStats.OverlapPackets)
+	configs.Log.Infof("%s: SG reassembled packet with %d bytes (start:%v,end:%v,skip:%d,saved:%d,nb:%d,%d,overlap:%d,%d)\n", ident, length, start, end, skip, saved, sgStats.Packets, sgStats.Chunks, sgStats.OverlapBytes, sgStats.OverlapPackets)
 	if skip == -1 {
 		// TODO this is allowed
 	} else if skip != 0 {
 		// TODO Missing bytes in stream: do not even try to parse it
 		return
+	}
+	if dir {
+		// 上行流量
+		t.upStream += length
+	} else {
+		t.downStream += length
+	}
+	if start {
+		t.startTime = ac.GetCaptureInfo().Timestamp
+	}
+	if end {
+		t.endTime = ac.GetCaptureInfo().Timestamp
 	}
 	data := sg.Fetch(length)
 	if t.isDNS {
@@ -202,14 +235,25 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 				t.server.bytes <- data
 			}
 		}
+	} else if t.isTLS {
+		if length > 0 {
+			configs.Log.Infof("Feeding handshake with:%d", COUNT)
+			t.handshake.bytes <- data
+		}
 	}
 }
 
 func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
-	configs.Log.Debugf("%s: Connection closed\n", t.ident)
+	configs.Log.Infof("%s: Connection closed\n", t.ident)
 	if t.isHTTP {
 		close(t.client.bytes)
 		close(t.server.bytes)
+	}
+	if t.isTLS {
+		if len(t.hostname) > 0 {
+			tls = append(tls, []string{t.ident, t.hostname, strconv.Itoa(t.upStream), strconv.Itoa(t.downStream), t.startTime.String(), t.endTime.String()})
+		}
+		close(t.handshake.bytes)
 	}
 	// do not remove the connection to allow last ack
 	return false

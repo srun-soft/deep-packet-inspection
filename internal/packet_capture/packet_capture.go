@@ -10,7 +10,6 @@ import (
 	"github.com/google/gopacket/reassembly"
 	"github.com/olekukonko/tablewriter"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
-
 	"os"
 	"os/signal"
 	"strconv"
@@ -20,6 +19,7 @@ import (
 const closeTimeout = time.Hour * 24 // Closing inactive: TODO: from CLI
 const timeout = time.Minute * 5
 
+var COUNT int
 var stats struct {
 	ipdefrag            int
 	missedBytes         int
@@ -37,19 +37,22 @@ var stats struct {
 	overlapBytes        int
 	overlapPackets      int
 }
+var tls [][]string
 
 func init() {
 	defer util.Run()
 	var handle *pcap.Handle
 	var err error
-	configs.Offline = false
-	if *configs.Fname != "" {
-		if handle, err = pcap.OpenOffline(*configs.Fname); err != nil {
+	offline := false
+
+	// 根据 OfflineFile 决定读取离线包还是网卡流量
+	if *configs.OfflineFile != "" {
+		if handle, err = pcap.OpenOffline(*configs.OfflineFile); err != nil {
 			configs.Log.Fatal("PCAP OpenOffline error:", err)
 		}
-		configs.Offline = true
+		offline = true
 	} else {
-		inactive, err := pcap.NewInactiveHandle(*configs.Iface)
+		inactive, err := pcap.NewInactiveHandle(*configs.NIC)
 		if err != nil {
 			configs.Log.Fatalf("could not create: %v", err)
 		}
@@ -67,6 +70,7 @@ func init() {
 		defer handle.Close()
 	}
 	// TODO BPF filter
+	// BPF filter 流量条件过滤
 	//if err = handle.SetBPFFilter("src host 117.89.176.67"); err != nil {
 	//	//if err = handle.SetBPFFilter("src host 101.227.131.222"); err != nil {
 	//	log.Fatal("BPF filter error:", err)
@@ -80,7 +84,7 @@ func init() {
 	source := gopacket.NewPacketSource(handle, dec)
 	source.NoCopy = true
 	configs.Log.Info("Starting to read packets\n")
-	count := 0
+	COUNT = 0
 	defragger := ip4defrag.NewIPv4Defragmenter()
 
 	streamFactory := &tcpStreamFactory{doHTTP: false}
@@ -91,8 +95,8 @@ func init() {
 	signal.Notify(signalChan, os.Interrupt)
 
 	for packet := range source.Packets() {
-		count++
-		configs.Log.Debugf("PACKET #%d\n", count)
+		COUNT++
+		configs.Log.Infof("PACKET #%d\n", COUNT)
 
 		// defrag IPv4 packet
 		ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
@@ -102,7 +106,7 @@ func init() {
 		ip4 := ipv4Layer.(*layers.IPv4)
 		l := ip4.Length
 		var newip4 *layers.IPv4
-		if configs.Offline {
+		if offline {
 			newip4, err = defragger.DefragIPv4WithTimestamp(ip4, packet.Metadata().CaptureInfo.Timestamp)
 		} else {
 			newip4, err = defragger.DefragIPv4(ip4)
@@ -136,8 +140,14 @@ func init() {
 			}
 			stats.totalsz += len(tcp.Payload)
 			assembler.AssembleWithContext(packet.NetworkLayer().NetworkFlow(), tcp, &c)
+
+			if packet.ApplicationLayer() != nil {
+				configs.Log.Warn("app payload l:", len(packet.ApplicationLayer().Payload()))
+				configs.Log.Warn("tcp payload l:", len(tcp.Payload))
+			}
+
 		}
-		if count%1000 == 0 {
+		if COUNT%1000 == 0 {
 			ref := packet.Metadata().CaptureInfo.Timestamp
 			flushed, closed := assembler.FlushWithOptions(reassembly.FlushOptions{
 				T:  ref.Add(-timeout),
@@ -190,4 +200,11 @@ func init() {
 	}
 	table.AppendBulk(data)
 	table.Render()
+
+	tlsTable := tablewriter.NewWriter(os.Stdout)
+	tlsTable.SetHeader([]string{"ident", "host", "up(bytes)", "down(bytes)", "start", "end"})
+	for _, v := range tls {
+		tlsTable.Append(v)
+	}
+	tlsTable.Render()
 }
