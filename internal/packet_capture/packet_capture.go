@@ -202,7 +202,7 @@ func init() {
 	table.Render()
 
 	tlsTable := tablewriter.NewWriter(os.Stdout)
-	tlsTable.SetHeader([]string{"ident", "host", "up(bytes)", "down(bytes)", "start", "end"})
+	tlsTable.SetHeader([]string{"ident", "host", "up(bytes)", "down(bytes)", "startTime", "endTime", "startPID", "endPID", "totalPacket"})
 	for _, v := range tls {
 		tlsTable.Append(v)
 	}

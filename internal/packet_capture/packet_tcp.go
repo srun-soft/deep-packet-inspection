@@ -1,6 +1,7 @@
 package packet_capture
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"github.com/google/gopacket/reassembly"
 	"github.com/sirupsen/logrus"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
+	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"strconv"
 	"sync"
 	"time"
@@ -106,8 +109,11 @@ type tcpStream struct {
 	payload        gopacket.Payload
 	startTime      time.Time
 	endTime        time.Time
+	startPID       int
+	endPID         int
 	upStream       int
 	downStream     int
+	packageCount   int
 	sync.Mutex
 }
 
@@ -145,7 +151,7 @@ func (t *tcpStream) Accept(tcp *layers.TCP, ci gopacket.CaptureInfo, dir reassem
 }
 
 func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.AssemblerContext) {
-	configs.Log.Error("Packet count is ", COUNT)
+	t.packageCount++
 	dir, start, end, skip := sg.Info()
 	length, saved := sg.Lengths()
 	// update stats
@@ -194,9 +200,10 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 	}
 	if start {
 		t.startTime = ac.GetCaptureInfo().Timestamp
-	}
-	if end {
+		t.startPID = COUNT
+	} else {
 		t.endTime = ac.GetCaptureInfo().Timestamp
+		t.endPID = COUNT
 	}
 	data := sg.Fetch(length)
 	if t.isDNS {
@@ -243,6 +250,16 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 	}
 }
 
+type Handshake struct {
+	ID         primitive.ObjectID `bson:"_id,omitempty"`
+	Ident      string             `bson:"ident"`
+	Host       string             `bson:"host"`
+	UpStream   int                `bson:"up_stream"`
+	DownStream int                `bson:"down_stream"`
+	StartTime  time.Time          `bson:"start_time"`
+	EndTime    time.Time          `bson:"end_time"`
+}
+
 func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
 	configs.Log.Infof("%s: Connection closed\n", t.ident)
 	if t.isHTTP {
@@ -251,7 +268,30 @@ func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
 	}
 	if t.isTLS {
 		if len(t.hostname) > 0 {
-			tls = append(tls, []string{t.ident, t.hostname, strconv.Itoa(t.upStream), strconv.Itoa(t.downStream), t.startTime.String(), t.endTime.String()})
+			tls = append(tls, []string{
+				t.ident,
+				t.hostname,
+				strconv.Itoa(t.upStream),
+				strconv.Itoa(t.downStream),
+				t.startTime.String(),
+				t.endTime.String(),
+				strconv.Itoa(t.startPID),
+				strconv.Itoa(t.endPID),
+				strconv.Itoa(t.packageCount),
+			})
+			mongo := database.MongoDB
+			one, err := mongo.Collection(fmt.Sprintf(ProtocolHs, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), &Handshake{
+				Ident:      t.ident,
+				Host:       t.hostname,
+				UpStream:   t.upStream,
+				DownStream: t.downStream,
+				StartTime:  t.startTime,
+				EndTime:    t.endTime,
+			})
+			if err != nil {
+				configs.Log.Errorf("save protocol handshake2mongo err:%s", err)
+			}
+			configs.Log.Debugf("save protocol handshake2mongo id:%s", one)
 		}
 		close(t.handshake.bytes)
 	}
