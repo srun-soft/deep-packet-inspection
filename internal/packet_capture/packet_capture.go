@@ -87,6 +87,7 @@ func init() {
 	COUNT = 0
 	defragger := ip4defrag.NewIPv4Defragmenter()
 
+	// 创建流重组连接池
 	streamFactory := &tcpStreamFactory{doHTTP: false}
 	streamPool := reassembly.NewStreamPool(streamFactory)
 	assembler := reassembly.NewAssembler(streamPool)
@@ -98,7 +99,8 @@ func init() {
 		COUNT++
 		configs.Log.Infof("PACKET #%d\n", COUNT)
 
-		// defrag IPv4 packet
+		// defrag IPv4 packet IP碎片整理
+		// ----------------------------
 		ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
 		if ipv4Layer == nil {
 			continue
@@ -107,8 +109,10 @@ func init() {
 		l := ip4.Length
 		var newip4 *layers.IPv4
 		if offline {
+			// 离线包使用数据包中的时间戳
 			newip4, err = defragger.DefragIPv4WithTimestamp(ip4, packet.Metadata().CaptureInfo.Timestamp)
 		} else {
+			// 在线分析使用当前时间
 			newip4, err = defragger.DefragIPv4(ip4)
 		}
 
@@ -128,6 +132,10 @@ func init() {
 			nextDecoder := newip4.NextLayerType()
 			_ = nextDecoder.Decode(newip4.Payload, pb)
 		}
+		// ----------------------------
+
+		// TCP 流重组
+		// ----------------------------
 		tcp := packet.Layer(layers.LayerTypeTCP)
 		if tcp != nil {
 			tcp := tcp.(*layers.TCP)
@@ -140,13 +148,21 @@ func init() {
 			}
 			stats.totalsz += len(tcp.Payload)
 			assembler.AssembleWithContext(packet.NetworkLayer().NetworkFlow(), tcp, &c)
-
-			if packet.ApplicationLayer() != nil {
-				configs.Log.Warn("app payload l:", len(packet.ApplicationLayer().Payload()))
-				configs.Log.Warn("tcp payload l:", len(tcp.Payload))
-			}
-
 		}
+		// ----------------------------
+		dns := packet.Layer(layers.LayerTypeDNS)
+		if dns != nil {
+			dns := dns.(*layers.DNS)
+			bson := &DnsBson{
+				SrcIP: ip4.SrcIP,
+				DstIP: ip4.DstIP,
+				Name:  string(dns.Questions[0].Name),
+				Type:  dns.Questions[0].Type.String(),
+				Class: dns.Questions[0].Class.String(),
+			}
+			bson.save()
+		}
+
 		if COUNT%1000 == 0 {
 			ref := packet.Metadata().CaptureInfo.Timestamp
 			flushed, closed := assembler.FlushWithOptions(reassembly.FlushOptions{

@@ -56,7 +56,7 @@ type HandshakeBson struct {
 
 func (h *HandshakeBson) save() {
 	mongo := database.MongoDB
-	one, err := mongo.Collection(fmt.Sprintf(ProtocolHs, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), h)
+	one, err := mongo.Collection(fmt.Sprintf(ProtocolHandShake, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), h)
 	if err != nil {
 		configs.Log.Errorf("save protocol handshake2mongo err:%s", err)
 		return

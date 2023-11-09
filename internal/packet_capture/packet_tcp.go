@@ -280,7 +280,7 @@ func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
 				strconv.Itoa(t.packageCount),
 			})
 			mongo := database.MongoDB
-			one, err := mongo.Collection(fmt.Sprintf(ProtocolHs, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), &Handshake{
+			one, err := mongo.Collection(fmt.Sprintf(ProtocolHandShake, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), &Handshake{
 				Ident:      t.ident,
 				Host:       t.hostname,
 				UpStream:   t.upStream,

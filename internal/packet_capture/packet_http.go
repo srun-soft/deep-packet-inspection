@@ -175,7 +175,7 @@ type RequestBson struct {
 
 func (r *Request) save() {
 	mongo := database.MongoDB
-	one, err := mongo.Collection(fmt.Sprintf(ProtocolHttp, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), &RequestBson{
+	one, err := mongo.Collection(fmt.Sprintf(ProtocolHTTP, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), &RequestBson{
 		Method:      r.Method,
 		URL:         r.URL.String(),
 		Proto:       r.Proto,

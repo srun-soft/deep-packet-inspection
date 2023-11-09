@@ -6,8 +6,9 @@ package packet_capture
 // Protocol const
 
 const (
-	ProtocolHttp = "protocol_http_%s"
-	ProtocolHs   = "protocol_hs_%s"
+	ProtocolHTTP      = "protocol_http_%s"
+	ProtocolHandShake = "protocol_hs_%s"
+	ProtocolDNS       = "protocol_dns_%s"
 )
 
 type Protocol interface {
