@@ -149,16 +149,19 @@ func init() {
 			stats.totalsz += len(tcp.Payload)
 			assembler.AssembleWithContext(packet.NetworkLayer().NetworkFlow(), tcp, &c)
 		}
+		// DNS 分析
 		// ----------------------------
 		dns := packet.Layer(layers.LayerTypeDNS)
 		if dns != nil {
 			dns := dns.(*layers.DNS)
 			bson := &DnsBson{
-				SrcIP: ip4.SrcIP,
-				DstIP: ip4.DstIP,
-				Name:  string(dns.Questions[0].Name),
-				Type:  dns.Questions[0].Type.String(),
-				Class: dns.Questions[0].Class.String(),
+				SrcIP:    ip4.SrcIP,
+				DstIP:    ip4.DstIP,
+				SrcIPStr: ip4.SrcIP.String(),
+				DstIPStr: ip4.DstIP.String(),
+				Name:     string(dns.Questions[0].Name),
+				Type:     dns.Questions[0].Type.String(),
+				Class:    dns.Questions[0].Class.String(),
 			}
 			bson.save()
 		}
