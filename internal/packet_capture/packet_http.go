@@ -2,8 +2,6 @@ package packet_capture
 
 import (
 	"bufio"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -13,9 +11,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"io"
 	"net/http"
-	"net/url"
-	"os"
-	"path"
 	"sync"
 	"time"
 )
@@ -104,54 +99,6 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 			}
 			encoding := res.Header["Content-Encoding"]
 			configs.Log.Infof("HTTP/%s Response: %s URL:%s (%d%s%d%s) -> %s\n", h.ident, res.Status, req, res.ContentLength, sym, s, contentType, encoding)
-			if *configs.Output != "" {
-				base := url.QueryEscape(path.Base(req))
-				if err != nil {
-					base = "incomplete-" + base
-				}
-				base = path.Join(*configs.Output, base)
-				if len(base) > 250 {
-					base = base[:250] + "..."
-				}
-				if base == *configs.Output {
-					base = path.Join(*configs.Output, "noname")
-				}
-				target := base
-				n := 0
-				for true {
-					_, err := os.Stat(target)
-					if err != nil {
-						break
-					}
-					target = fmt.Sprintf("#{base}-#{n}")
-					n++
-				}
-				f, err := os.Create(target)
-				if err != nil {
-					configs.Log.Errorf("HTTP-create Cannot create %s: %s\n", target, err)
-					continue
-				}
-				var r io.Reader
-				r = bytes.NewBuffer(body)
-				if len(encoding) > 0 && (encoding[0] == "gzip" || encoding[0] == "deflate") {
-					r, err = gzip.NewReader(r)
-					if err != nil {
-						configs.Log.Errorf("HTTP-gunzip Failed to gzip decode: %s", err)
-					}
-				}
-				if err == nil {
-					w, err := io.Copy(f, r)
-					if _, ok := r.(*gzip.Reader); ok {
-						_ = r.(*gzip.Reader).Close()
-					}
-					_ = f.Close()
-					if err != nil {
-						configs.Log.Errorf("HTTP-save %s: failed to save %s (l:%d): %s\n", h.ident, target, w, err)
-					} else {
-						configs.Log.Infof("%s: Saved %s (l:%d)\n", h.ident, target, w)
-					}
-				}
-			}
 		}
 	}
 }
