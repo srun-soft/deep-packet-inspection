@@ -133,7 +133,6 @@ func init() {
 			}
 		}
 		// ----------------------------
-
 		// TCP 流重组
 		// ----------------------------
 		if configs.TCP {
@@ -151,6 +150,7 @@ func init() {
 				assembler.AssembleWithContext(packet.NetworkLayer().NetworkFlow(), tcp, &c)
 			}
 		}
+		// ----------------------------
 		// DNS 分析
 		// ----------------------------
 		if configs.DNS {
@@ -174,19 +174,39 @@ func init() {
 				bson.save()
 			}
 		}
-
+		// ----------------------------
 		// Radius 协议
 		// ----------------------------
 		if configs.Radius {
-			radius := packet.Layer(layers.LayerTypeRADIUS)
-			if radius != nil {
-				radius := radius.(*layers.RADIUS)
+			r := &layers.RADIUS{}
+			radiusLayer := packet.Layer(layers.LayerTypeRADIUS)
+			if radiusLayer != nil {
+				r = radiusLayer.(*layers.RADIUS)
 				radiusPacket := &RadiusPacket{
-					*radius,
+					r,
 				}
 				radiusPacket.Run()
+				continue
+			}
+			transport := packet.TransportLayer()
+			if transport == nil {
+				continue
+			}
+			if transport != nil && transport.TransportFlow().Dst().String() == "1813" && transport.TransportFlow().Src().String() == "1813" {
+				configs.Log.Info(packet.ApplicationLayer())
+				err = r.DecodeFromBytes(packet.ApplicationLayer().Payload(), gopacket.NilDecodeFeedback)
+				if err != nil {
+					configs.Log.Error("Error decoding Radius packet:", err)
+					continue
+				}
+				radiusPacket := &RadiusPacket{
+					r,
+				}
+				radiusPacket.Run()
+				continue
 			}
 		}
+		// ----------------------------
 
 		if COUNT%1000 == 0 {
 			ref := packet.Metadata().CaptureInfo.Timestamp
