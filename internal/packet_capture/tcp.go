@@ -49,6 +49,7 @@ func (factory *tcpStreamFactory) New(net, transport gopacket.Flow, tcp *layers.T
 		dst:        net.Dst().Raw(),
 		optchecker: reassembly.NewTCPOptionCheck(),
 		payload:    tcp.Payload,
+		delay:      time.Now().Sub(ac.GetCaptureInfo().Timestamp),
 	}
 	if stream.isHTTP {
 		stream.client = httpReader{
@@ -113,6 +114,7 @@ type tcpStream struct {
 	upStream       int
 	downStream     int
 	packageCount   int
+	delay          time.Duration
 	sync.Mutex
 }
 
@@ -239,6 +241,7 @@ func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
 				DownStream: t.downStream,
 				StartTime:  t.startTime,
 				EndTime:    t.endTime,
+				Delay:      t.delay,
 			}
 			httpsBson.Save2Mongo()
 		}

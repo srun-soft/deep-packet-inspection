@@ -27,6 +27,7 @@ type Tls struct {
 	DownStream int                `bson:"down_stream"`
 	StartTime  time.Time          `bson:"start_time"`
 	EndTime    time.Time          `bson:"end_time"`
+	Delay      time.Duration      `bson:"delay"`
 }
 
 func (h *Tls) Parse() {

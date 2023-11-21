@@ -31,6 +31,7 @@ type Http struct {
 	RequestURI  string             `bson:"request_uri"`
 	ContentType string             `bson:"content_type"`
 	UserAgent   string             `bson:"user_agent"`
+	Delay       time.Duration      `bson:"delay"`
 }
 
 func (h *Http) Parse() {

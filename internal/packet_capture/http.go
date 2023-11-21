@@ -60,6 +60,7 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 				RequestURI:  req.RequestURI,
 				ContentType: req.Header.Get("Content-Type"),
 				UserAgent:   req.UserAgent(),
+				Delay:       h.parent.delay,
 			}
 			httpBson.Save2Mongo()
 			body, err := io.ReadAll(req.Body)
