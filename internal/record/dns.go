@@ -1,4 +1,4 @@
-package packet_capture
+package record
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// DNS analyze
+// DNS Protocol Analyze
 
-type DNSBson struct {
+type Dns struct {
 	ID       primitive.ObjectID `bson:"_id,omitempty"`
 	SrcIP    net.IP             `bson:"src_ip"`
 	DstIP    net.IP             `bson:"dst_ip"`
@@ -25,11 +25,11 @@ type DNSBson struct {
 	Class    string             `bson:"class"`
 }
 
-func (d *DNSBson) Parse() {
-	d.Domain, d.Suffix = utils.Parse(d.Host)
+func (d *Dns) Parse() {
+	d.Domain, d.Suffix = utils.ParseHost(d.Host)
 }
 
-func (d *DNSBson) Save2Mongo() {
+func (d *Dns) Save2Mongo() {
 	d.Parse()
 
 	mongo := database.MongoDB.Database(ProtocolDNS)

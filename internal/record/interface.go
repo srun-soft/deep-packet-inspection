@@ -1,4 +1,4 @@
-package packet_capture
+package record
 
 // packet interface
 // Define protocol handling operations

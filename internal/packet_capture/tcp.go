@@ -8,8 +8,8 @@ import (
 	"github.com/google/gopacket/reassembly"
 	"github.com/sirupsen/logrus"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
+	"github.com/srun-soft/dpi-analysis-toolkit/internal/record"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -223,25 +223,14 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 }
 
 func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
-	configs.Log.Infof("%s: Connection closed\n", t.ident)
+	configs.Log.Debugf("%s: Connection closed\n", t.ident)
 	if t.isHTTP {
 		close(t.client.bytes)
 		close(t.server.bytes)
 	}
 	if t.isTLS {
 		if len(t.hostname) > 0 {
-			tls = append(tls, []string{
-				t.ident,
-				t.hostname,
-				strconv.Itoa(t.upStream),
-				strconv.Itoa(t.downStream),
-				t.startTime.String(),
-				t.endTime.String(),
-				strconv.Itoa(t.startPID),
-				strconv.Itoa(t.endPID),
-				strconv.Itoa(t.packageCount),
-			})
-			httpsBson := &HTTPSBson{
+			httpsBson := &record.Tls{
 				SrcIP:      t.src,
 				DstIP:      t.dst,
 				Host:       t.hostname,

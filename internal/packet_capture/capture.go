@@ -9,8 +9,10 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/reassembly"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
+	"github.com/srun-soft/dpi-analysis-toolkit/internal/record"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 )
 
@@ -35,7 +37,10 @@ var stats struct {
 	overlapBytes        int
 	overlapPackets      int
 }
-var tls [][]string
+
+type Packet interface {
+	run(wg *sync.WaitGroup)
+}
 
 func init() {
 	defer util.Run()
@@ -161,7 +166,7 @@ func init() {
 			dnsLayer := packet.Layer(layers.LayerTypeDNS)
 			if dnsLayer != nil {
 				dns := dnsLayer.(*layers.DNS)
-				dnsBson := &DNSBson{
+				dnsBson := &record.Dns{
 					SrcIP:    ip4.SrcIP,
 					DstIP:    ip4.DstIP,
 					SrcIPStr: ip4.SrcIP.String(),
@@ -181,10 +186,10 @@ func init() {
 			radiusLayer := packet.Layer(layers.LayerTypeRADIUS)
 			if radiusLayer != nil {
 				r = radiusLayer.(*layers.RADIUS)
-				radiusPacket := &RadiusPacket{
+				radiusPacket := &radiusReader{
 					r,
 				}
-				radiusPacket.Run()
+				radiusPacket.run()
 				continue
 			}
 			transport := packet.TransportLayer()
@@ -198,10 +203,10 @@ func init() {
 					configs.Log.Error("Error decoding Radius packet:", err)
 					continue
 				}
-				radiusPacket := &RadiusPacket{
+				radiusPacket := &radiusReader{
 					r,
 				}
-				radiusPacket.Run()
+				radiusPacket.run()
 				continue
 			}
 		}

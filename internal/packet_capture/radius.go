@@ -8,8 +8,12 @@ import (
 	"os"
 )
 
-type RadiusPacket struct {
+type radiusReader struct {
 	*layers.RADIUS
+}
+
+func (r *radiusReader) Read(p []byte) (n int, err error) {
+	return n, nil
 }
 
 // FormatValue 格式化属性
@@ -31,11 +35,11 @@ func FormatValue(t layers.RADIUSAttributeType, l layers.RADIUSAttributeLength, v
 	}
 }
 
-func (p *RadiusPacket) Run() {
-	if p.Code == layers.RADIUSCodeAccessRequest || p.Code == layers.RADIUSCodeAccountingRequest {
+func (r *radiusReader) run() {
+	if r.Code == layers.RADIUSCodeAccessRequest || r.Code == layers.RADIUSCodeAccountingRequest {
 		table := tablewriter.NewWriter(os.Stdout)
 		table.SetHeader([]string{"Type", "Value"})
-		for _, item := range p.Attributes {
+		for _, item := range r.Attributes {
 			if item.Type == layers.RADIUSAttributeTypeVendorSpecific {
 				continue
 			}
