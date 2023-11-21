@@ -21,7 +21,7 @@ func All() {
 
 	fmt.Println("设备列表:")
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Name", "IPv4", "IPv6", "Flags"})
+	table.SetHeader([]string{"Host", "IPv4", "IPv6", "Flags"})
 
 	for _, dev := range devs {
 		var ipv4, ipv6 net.IP

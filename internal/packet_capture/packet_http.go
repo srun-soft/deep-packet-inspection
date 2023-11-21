@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
+	"github.com/srun-soft/dpi-analysis-toolkit/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"io"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -50,17 +52,30 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 				configs.Log.Errorf("HTTP-request HTTP/%s Request error: %s (%v,%+v)\n", h.ident, err, err, err)
 				continue
 			}
-			r := &Request{req}
-			r.save()
+			httpBson := &HTTPBson{
+				Ident:       h.ident,
+				SrcIP:       h.parent.src,
+				DstIP:       h.parent.dst,
+				Method:      req.Method,
+				URL:         req.URL.String(),
+				Proto:       req.Proto,
+				Header:      req.Header,
+				Host:        req.Host,
+				RemoteAddr:  req.RemoteAddr,
+				RequestURI:  req.RequestURI,
+				ContentType: req.Header.Get("Content-Type"),
+				UserAgent:   req.UserAgent(),
+			}
+			httpBson.Save2Mongo()
 			body, err := io.ReadAll(req.Body)
 			s := len(body)
 			if err != nil {
 				configs.Log.Errorf("HTTP-request-body Got body err: %s \n", err)
 			} else if h.hexdump {
-				configs.Log.Info("Body(%d/0x%x)\n%s\n", len(body), len(body), hex.Dump(body))
+				configs.Log.Debugf("Body(%d/0x%x)\n%s\n", len(body), len(body), hex.Dump(body))
 			}
 			_ = req.Body.Close()
-			configs.Log.Info("HTTP/%s Request: %s %s (body:%d)\n", h.ident, req.Method, req.URL, s)
+			configs.Log.Debugf("HTTP/%s Request: %s %s (body:%d)\n", h.ident, req.Method, req.URL, s)
 			h.parent.Lock()
 			h.parent.urls = append(h.parent.urls, req.URL.String())
 			h.parent.Unlock()
@@ -86,7 +101,7 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 				configs.Log.Errorf("HTTP-response-body HTTP/%s: failed to get body(parsed len:%d): %s\n", h.ident, s, err)
 			}
 			if h.hexdump {
-				configs.Log.Infof("Body(%d/0x%x)\n%s\n", len(body), len(body), hex.Dump(body))
+				configs.Log.Debugf("Body(%d/0x%x)\n%s\n", len(body), len(body), hex.Dump(body))
 			}
 			_ = res.Body.Close()
 			sym := ","
@@ -98,44 +113,43 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 				contentType = []string{http.DetectContentType(body)}
 			}
 			encoding := res.Header["Content-Encoding"]
-			configs.Log.Infof("HTTP/%s Response: %s URL:%s (%d%s%d%s) -> %s\n", h.ident, res.Status, req, res.ContentLength, sym, s, contentType, encoding)
+			configs.Log.Debugf("HTTP/%s Response: %s URL:%s (%d%s%d%s) -> %s\n", h.ident, res.Status, req, res.ContentLength, sym, s, contentType, encoding)
 		}
 	}
 }
 
-type Request struct {
-	*http.Request
-}
-
-type RequestBson struct {
+type HTTPBson struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	Ident       string             `bson:"ident"`
+	SrcIP       net.IP             `bson:"src_ip"`
+	DstIP       net.IP             `bson:"dst_ip"`
+	SrcIPStr    string             `bson:"src_ip_str"`
+	DstIPStr    string             `bson:"dst_ip_str"`
 	Method      string             `bson:"method"`
 	URL         string             `bson:"url"`
 	Proto       string             `bson:"proto"`
 	Header      http.Header        `bson:"header"`
 	Host        string             `bson:"host"`
+	Domain      string             `bson:"domain"`
+	Suffix      string             `bson:"suffix"`
 	RemoteAddr  string             `bson:"remote_addr"`
 	RequestURI  string             `bson:"request_uri"`
 	ContentType string             `bson:"content_type"`
 	UserAgent   string             `bson:"user_agent"`
 }
 
-func (r *Request) save() {
-	mongo := database.MongoDB
-	one, err := mongo.Collection(fmt.Sprintf(ProtocolHTTP, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), &RequestBson{
-		Method:      r.Method,
-		URL:         r.URL.String(),
-		Proto:       r.Proto,
-		Header:      r.Header,
-		Host:        r.Host,
-		RemoteAddr:  r.RemoteAddr,
-		RequestURI:  r.RequestURI,
-		ContentType: r.Header.Get("Content-Type"),
-		UserAgent:   r.UserAgent(),
-	})
+func (h *HTTPBson) Parse() {
+	h.Domain, h.Suffix = utils.Parse(h.Host)
+	h.SrcIPStr, h.DstIPStr = h.SrcIP.String(), h.DstIP.String()
+}
+
+func (h *HTTPBson) Save2Mongo() {
+	h.Parse()
+	mongo := database.MongoDB.Database(ProtocolHTTP)
+	one, err := mongo.Collection(time.Now().Format("C_2006_01_02_15")).InsertOne(context.TODO(), h)
 	if err != nil {
-		configs.Log.Errorf("save protol http2mongo err:%s", err)
+		configs.Log.Errorf("Save2Mongo protol http2mongo err:%s", err)
 		return
 	}
-	configs.Log.Debugf("save protol http2mongo id:%s", one.InsertedID)
+	configs.Log.Debugf("Save2Mongo protol http2mongo id:%s", one.InsertedID)
 }

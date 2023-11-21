@@ -1,8 +1,6 @@
 package packet_capture
 
 import (
-	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/google/gopacket"
@@ -10,8 +8,7 @@ import (
 	"github.com/google/gopacket/reassembly"
 	"github.com/sirupsen/logrus"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
-	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -43,12 +40,13 @@ func (factory *tcpStreamFactory) New(net, transport gopacket.Flow, tcp *layers.T
 	stream := &tcpStream{
 		net:        net,
 		transport:  transport,
-		isDNS:      tcp.SrcPort == 53 || tcp.DstPort == 53,
 		isHTTP:     (tcp.SrcPort == 80 || tcp.DstPort == 80) && factory.doHTTP,
 		isTLS:      tcp.DstPort == 443,
 		reversed:   tcp.SrcPort == 80,
 		tcpstate:   reassembly.NewTCPSimpleFSM(fsmOptions),
 		ident:      fmt.Sprintf("%s:%s", net, transport),
+		src:        net.Src().Raw(),
+		dst:        net.Dst().Raw(),
 		optchecker: reassembly.NewTCPOptionCheck(),
 		payload:    tcp.Payload,
 	}
@@ -95,7 +93,6 @@ type tcpStream struct {
 	fsmerr         bool
 	optchecker     reassembly.TCPOptionCheck
 	net, transport gopacket.Flow
-	isDNS          bool
 	isHTTP         bool
 	reversed       bool
 	client         httpReader
@@ -104,6 +101,8 @@ type tcpStream struct {
 	urls           []string
 	hostname       string
 	ident          string
+	src            net.IP
+	dst            net.IP
 	prevTimeStamp  time.Time
 	isTLS          bool
 	payload        gopacket.Payload
@@ -189,7 +188,7 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 	if skip == -1 {
 		// TODO this is allowed
 	} else if skip != 0 {
-		// TODO Missing bytes in stream: do not even try to parse it
+		// TODO Missing bytes in stream: do not even try to Parse it
 		return
 	}
 	if dir {
@@ -206,34 +205,7 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 		t.endPID = COUNT
 	}
 	data := sg.Fetch(length)
-	if t.isDNS {
-		dns := &layers.DNS{}
-		var decoded []gopacket.LayerType
-		if len(data) < 2 {
-			if len(data) > 0 {
-				sg.KeepFrom(0)
-			}
-			return
-		}
-		dnsSize := binary.BigEndian.Uint16(data[:2])
-		missing := int(dnsSize) - len(data[2:])
-		configs.Log.Debugf("dnsSize: %d, missing: %d\n", dnsSize, missing)
-		if missing > 0 {
-			configs.Log.Infof("Missing some bytes: %d\n", missing)
-			sg.KeepFrom(0)
-			return
-		}
-		p := gopacket.NewDecodingLayerParser(layers.LayerTypeDNS, dns)
-		err := p.DecodeLayers(data[2:], &decoded)
-		if err != nil {
-			configs.Log.Errorf("DNS-parser Failed to decoed DNS: %v\n", err)
-		} else {
-			configs.Log.Debugf("DNS: %s\n", gopacket.LayerDump(dns))
-		}
-		if len(data) > 2+int(dnsSize) {
-			sg.KeepFrom(2 + int(dnsSize))
-		}
-	} else if t.isHTTP {
+	if t.isHTTP {
 		if length > 0 {
 			configs.Log.Debugf("Feeding http with:\n%s", hex.Dump(data))
 			if dir == reassembly.TCPDirClientToServer && !t.reversed {
@@ -248,16 +220,6 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 			t.handshake.bytes <- data
 		}
 	}
-}
-
-type Handshake struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty"`
-	Ident      string             `bson:"ident"`
-	Host       string             `bson:"host"`
-	UpStream   int                `bson:"up_stream"`
-	DownStream int                `bson:"down_stream"`
-	StartTime  time.Time          `bson:"start_time"`
-	EndTime    time.Time          `bson:"end_time"`
 }
 
 func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
@@ -279,19 +241,17 @@ func (t *tcpStream) ReassemblyComplete(_ reassembly.AssemblerContext) bool {
 				strconv.Itoa(t.endPID),
 				strconv.Itoa(t.packageCount),
 			})
-			mongo := database.MongoDB
-			one, err := mongo.Collection(fmt.Sprintf(ProtocolHandShake, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), &Handshake{
-				Ident:      t.ident,
+			httpsBson := &HTTPSBson{
+				SrcIP:      t.src,
+				DstIP:      t.dst,
 				Host:       t.hostname,
+				Ident:      t.ident,
 				UpStream:   t.upStream,
 				DownStream: t.downStream,
 				StartTime:  t.startTime,
 				EndTime:    t.endTime,
-			})
-			if err != nil {
-				configs.Log.Errorf("save protocol handshake2mongo err:%s", err)
 			}
-			configs.Log.Debugf("save protocol handshake2mongo id:%s", one)
+			httpsBson.Save2Mongo()
 		}
 		close(t.handshake.bytes)
 	}

@@ -6,11 +6,12 @@ package packet_capture
 // Protocol const
 
 const (
-	ProtocolHTTP      = "protocol_http_%s"
-	ProtocolHandShake = "protocol_hs_%s"
-	ProtocolDNS       = "protocol_dns_%s"
+	ProtocolHTTP  = "protocol_http"
+	ProtocolHTTPS = "protocol_https"
+	ProtocolDNS   = "protocol_dns"
 )
 
 type Protocol interface {
-	save()
+	Parse()
+	Save2Mongo()
 }

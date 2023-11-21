@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
+	"github.com/srun-soft/dpi-analysis-toolkit/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net"
 	"sync"
@@ -41,27 +42,40 @@ func (t *tlsReader) run(wg *sync.WaitGroup) {
 		} else {
 			continue
 		}
-		configs.Log.Warn("Server Name Indication is ", hostname)
+		configs.Log.Warn("Server Host Indication is ", hostname)
 	}
 }
 
-type HandshakeBson struct {
-	ID     primitive.ObjectID `bson:"_id,omitempty"`
-	Host   string             `bson:"host"`
-	Domain string             `bson:"domain"`
-	Suffix string             `bson:"suffix"`
-	SrcIP  net.IP             `bson:"src_ip"`
-	DstIP  net.IP             `bson:"dst_ip"`
+type HTTPSBson struct {
+	ID         primitive.ObjectID `bson:"_id,omitempty"`
+	Host       string             `bson:"host"`
+	Domain     string             `bson:"domain"`
+	Suffix     string             `bson:"suffix"`
+	SrcIP      net.IP             `bson:"src_ip"`
+	DstIP      net.IP             `bson:"dst_ip"`
+	SrcIPStr   string             `bson:"src_ip_str"`
+	DstIPStr   string             `bson:"dst_ip_str"`
+	Ident      string             `bson:"ident"`
+	UpStream   int                `bson:"up_stream"`
+	DownStream int                `bson:"down_stream"`
+	StartTime  time.Time          `bson:"start_time"`
+	EndTime    time.Time          `bson:"end_time"`
 }
 
-func (h *HandshakeBson) save() {
-	mongo := database.MongoDB
-	one, err := mongo.Collection(fmt.Sprintf(ProtocolHandShake, time.Now().Format("2006_01_02_15"))).InsertOne(context.TODO(), h)
+func (h *HTTPSBson) Parse() {
+	h.Domain, h.Suffix = utils.Parse(h.Host)
+	h.SrcIPStr, h.DstIPStr = h.SrcIP.String(), h.DstIP.String()
+}
+
+func (h *HTTPSBson) Save2Mongo() {
+	h.Parse()
+	mongo := database.MongoDB.Database(ProtocolHTTPS)
+	one, err := mongo.Collection(time.Now().Format("C_2006_01_02_15")).InsertOne(context.TODO(), h)
 	if err != nil {
-		configs.Log.Errorf("save protocol handshake2mongo err:%s", err)
+		configs.Log.Errorf("Save2Mongo protocol handshake2mongo err:%s", err)
 		return
 	}
-	configs.Log.Debugf("save protocol handshake2mongo id:%s", one)
+	configs.Log.Debugf("Save2Mongo protocol handshake2mongo id:%s", one)
 }
 
 // 获取SNI server name indication

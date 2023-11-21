@@ -8,7 +8,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/reassembly"
-	"github.com/olekukonko/tablewriter"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"os"
 	"os/signal"
@@ -87,7 +86,7 @@ func init() {
 	defragger := ip4defrag.NewIPv4Defragmenter()
 
 	// 创建流重组连接池
-	streamFactory := &tcpStreamFactory{doHTTP: false}
+	streamFactory := &tcpStreamFactory{doHTTP: configs.HTTP}
 	streamPool := reassembly.NewStreamPool(streamFactory)
 	assembler := reassembly.NewAssembler(streamPool)
 
@@ -162,16 +161,16 @@ func init() {
 			dnsLayer := packet.Layer(layers.LayerTypeDNS)
 			if dnsLayer != nil {
 				dns := dnsLayer.(*layers.DNS)
-				bson := &DnsBson{
+				dnsBson := &DNSBson{
 					SrcIP:    ip4.SrcIP,
 					DstIP:    ip4.DstIP,
 					SrcIPStr: ip4.SrcIP.String(),
 					DstIPStr: ip4.DstIP.String(),
-					Name:     string(dns.Questions[0].Name),
+					Host:     string(dns.Questions[0].Name),
 					Type:     dns.Questions[0].Type.String(),
 					Class:    dns.Questions[0].Class.String(),
 				}
-				bson.save()
+				dnsBson.Save2Mongo()
 			}
 		}
 		// ----------------------------
@@ -231,18 +230,20 @@ func init() {
 
 	closed := assembler.FlushAll()
 	configs.Log.Debugf("Final flush: %d closed", closed)
-	streamPool.Dump()
+	if configs.Debug {
+		streamPool.Dump()
+	}
 
 	streamFactory.WaitGoRoutines()
 	configs.Log.Debugf("%s\n", assembler.Dump())
 	configs.Log.Printf("IPdefrag:\t\t%d\n", stats.ipdefrag)
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{
-		"field",
-		"remark",
-		"value",
-	})
+	//table := tablewriter.NewWriter(os.Stdout)
+	//table.SetHeader([]string{
+	//	"field",
+	//	"remark",
+	//	"value",
+	//})
 	//data := [][]string{
 	//	{"missed bytes", "丢失字节", strconv.Itoa(stats.missedBytes)},
 	//	{"total packets", "总包数", strconv.Itoa(stats.pkt)},
@@ -262,10 +263,10 @@ func init() {
 	//table.AppendBulk(data)
 	//table.Render()
 
-	tlsTable := tablewriter.NewWriter(os.Stdout)
-	tlsTable.SetHeader([]string{"ident", "host", "up(bytes)", "down(bytes)", "startTime", "endTime", "startPID", "endPID", "totalPacket"})
-	for _, v := range tls {
-		tlsTable.Append(v)
-	}
-	tlsTable.Render()
+	//tlsTable := tablewriter.NewWriter(os.Stdout)
+	//tlsTable.SetHeader([]string{"ident", "host", "up(bytes)", "down(bytes)", "startTime", "endTime", "startPID", "endPID", "totalPacket"})
+	//for _, v := range tls {
+	//	tlsTable.Append(v)
+	//}
+	//tlsTable.Render()
 }

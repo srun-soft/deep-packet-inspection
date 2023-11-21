@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	MongoDB *mongo.Database
+	MongoDB *mongo.Client
 )
 
 func init() {
@@ -27,5 +27,5 @@ func init() {
 		configs.Log.Fatal("Failed to check connect MongoDB!", err)
 	}
 	configs.Log.Info("Connected to MongoDB!")
-	MongoDB = client.Database("dpi")
+	MongoDB = client
 }

@@ -10,7 +10,7 @@ import (
 func initLog() {
 	Log = logrus.New()
 
-	if *Debug {
+	if Debug {
 		Log.SetLevel(logrus.DebugLevel)
 	} else {
 		Log.SetLevel(logrus.InfoLevel)
@@ -22,5 +22,5 @@ func initLog() {
 		FieldsOrder:     []string{"component", "category"},
 	})
 
-	Log.WithField("Log组件加载成功", fmt.Sprintf("DEBUG模式:%t", *Debug)).Info()
+	Log.WithField("Log组件加载成功", fmt.Sprintf("DEBUG模式:%t", Debug)).Info()
 }
