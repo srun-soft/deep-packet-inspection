@@ -19,6 +19,7 @@ var (
 	HTTP   bool
 	TCP    bool
 	DNS    bool
+	ICMP   bool
 )
 
 func init() {
@@ -29,6 +30,7 @@ func init() {
 	flag.BoolVar(&HTTP, "http", false, "HTTP Protocol")
 	flag.BoolVar(&TCP, "tcp", false, "TCP Protocol")
 	flag.BoolVar(&DNS, "dns", false, "DNS Protocol")
+	flag.BoolVar(&ICMP, "icmp", false, "ICMP Protocol")
 	flag.Parse()
 	initLog()
 

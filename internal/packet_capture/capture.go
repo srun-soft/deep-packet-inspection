@@ -10,6 +10,7 @@ import (
 	"github.com/google/gopacket/reassembly"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/record"
+	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -101,6 +102,22 @@ func init() {
 	for packet := range source.Packets() {
 		COUNT++
 		configs.Log.Infof("Packet Count:%d", COUNT)
+		// network layer
+		var srcIP, dstIP net.IP
+		var ttl uint8
+		if packet.NetworkLayer() == nil {
+			continue
+		}
+		if packet.NetworkLayer().LayerType() == layers.LayerTypeIPv4 {
+			networkLayer := packet.NetworkLayer().(*layers.IPv4)
+			srcIP, dstIP, ttl = networkLayer.SrcIP, networkLayer.DstIP, networkLayer.TTL
+			ttl = networkLayer.TTL
+		} else if packet.NetworkLayer().LayerType() == layers.LayerTypeIPv6 {
+			networkLayer := packet.NetworkLayer().(*layers.IPv6)
+			srcIP, dstIP, ttl = networkLayer.SrcIP, networkLayer.DstIP, networkLayer.HopLimit
+		} else {
+			continue
+		}
 		// defrag IPv4 packet IP碎片整理
 		// ----------------------------
 		if configs.Defrag {
@@ -209,6 +226,22 @@ func init() {
 				radiusPacket.run()
 				continue
 			}
+		}
+		// ----------------------------
+		// ICMP 协议
+		if configs.ICMP {
+			icmpLayer := packet.Layer(layers.LayerTypeICMPv4)
+			if icmpLayer == nil {
+				continue
+			}
+			icmp := &IcmpReader{
+				srcIP:  srcIP,
+				dstIP:  dstIP,
+				ttl:    ttl,
+				time:   packet.Metadata().Timestamp,
+				layers: icmpLayer.(*layers.ICMPv4),
+			}
+			icmp.run()
 		}
 		// ----------------------------
 
