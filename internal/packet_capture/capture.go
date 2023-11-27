@@ -10,6 +10,7 @@ import (
 	"github.com/google/gopacket/reassembly"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/record"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -71,14 +72,16 @@ func init() {
 		if handle, err = inactive.Activate(); err != nil {
 			configs.Log.Fatal("PCAP Activate error:", err)
 		}
-		defer handle.Close()
 	}
-	// TODO BPF filter
+	defer handle.Close()
 	// BPF filter 流量条件过滤
-	//if err = handle.SetBPFFilter("src host 117.89.176.67"); err != nil {
-	//	//if err = handle.SetBPFFilter("src host 101.227.131.222"); err != nil {
-	//	log.Fatal("BPF filter error:", err)
-	//}
+	if *configs.BPF != "" {
+		configs.Log.Infof("Berkeley Packet Filter:%s", *configs.BPF)
+		if err = handle.SetBPFFilter(*configs.BPF); err != nil {
+			log.Fatal("BPF filter error:", err)
+		}
+	}
+
 	var dec gopacket.Decoder
 	var ok bool
 	decoderName := fmt.Sprintf("%s", handle.LinkType())

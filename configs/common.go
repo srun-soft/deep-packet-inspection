@@ -11,6 +11,7 @@ var (
 	Devices     = flag.String("devices", "", "获取设备列表")
 	NIC         = flag.String("n", "en0", "Network interface controller")
 	OfflineFile = flag.String("f", "", "offline filepath")
+	BPF         = flag.String("bpf", "", "Berkeley Packet Filter")
 
 	Debug  bool
 	OutPut bool
