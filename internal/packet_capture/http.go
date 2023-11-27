@@ -48,19 +48,19 @@ func (h *httpReader) run(wg *sync.WaitGroup) {
 				continue
 			}
 			httpBson := &record.Http{
-				Ident:       h.ident,
-				SrcIP:       h.parent.src,
-				DstIP:       h.parent.dst,
-				Method:      req.Method,
-				URL:         req.URL.String(),
-				Proto:       req.Proto,
-				Header:      req.Header,
-				Host:        req.Host,
-				RemoteAddr:  req.RemoteAddr,
-				RequestURI:  req.RequestURI,
-				ContentType: req.Header.Get("Content-Type"),
-				UserAgent:   req.UserAgent(),
-				Delay:       h.parent.delay,
+				Ident:         h.ident,
+				SrcIP:         h.parent.src,
+				DstIP:         h.parent.dst,
+				Method:        req.Method,
+				URL:           req.URL.String(),
+				Proto:         req.Proto,
+				Host:          req.Host,
+				RemoteAddr:    req.RemoteAddr,
+				RequestURI:    req.RequestURI,
+				ContentType:   req.Header.Get("Content-Type"),
+				ContentLength: req.Header.Get("Content-Length"),
+				UserAgent:     req.UserAgent(),
+				Delay:         h.parent.delay,
 			}
 			httpBson.Save2Mongo()
 			body, err := io.ReadAll(req.Body)

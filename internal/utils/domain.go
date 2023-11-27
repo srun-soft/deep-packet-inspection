@@ -13,9 +13,13 @@ func ParseHost(h string) (domain, suffix string) {
 	if h == "" {
 		return
 	}
+	if strings.Contains(h, ":") {
+		host := strings.Split(h, ":")
+		h = host[0]
+	}
 	// 如果是ip直接返回
 	if net.ParseIP(h) != nil {
-		return
+		return h, ""
 	}
 	parts := strings.Split(h, ".")
 	if len(parts) > 2 {

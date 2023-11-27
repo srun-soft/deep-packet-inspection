@@ -164,14 +164,8 @@ func init() {
 				if err != nil {
 					configs.Log.Fatalf("Failed to set network layer for checksum: %s\n", err)
 				}
-				payload := packet.ApplicationLayer()
-				http := true
-				if payload == nil || payload.Payload() == nil {
-					http = false
-				}
 				c := Context{
 					CaptureInfo: packet.Metadata().CaptureInfo,
-					Http:        http,
 				}
 				stats.totalsz += len(tcp.Payload)
 				assembler.AssembleWithContext(packet.NetworkLayer().NetworkFlow(), tcp, &c)
