@@ -74,7 +74,7 @@ func init() {
 		}
 	}
 	defer handle.Close()
-	// BPF filter 流量条件过滤
+	// Berkeley Packet Filter 流量条件过滤
 	if *configs.BPF != "" {
 		configs.Log.Infof("Berkeley Packet Filter:%s", *configs.BPF)
 		if err = handle.SetBPFFilter(*configs.BPF); err != nil {
