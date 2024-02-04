@@ -3,6 +3,7 @@ package record
 import (
 	"context"
 	"fmt"
+	"github.com/mileusna/useragent"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/utils"
@@ -32,6 +33,7 @@ type Http struct {
 	ContentType   string             `bson:"content_type"`
 	ContentLength string             `bson:"content_length"`
 	UserAgent     string             `bson:"user_agent"`
+	UAParser      string             `bson:"ua_parser"`
 	Delay         time.Duration      `bson:"delay"`
 }
 
@@ -49,6 +51,13 @@ func (h *Http) Parse() {
 func (h *Http) Save2Mongo() {
 	h.Parse()
 
+	if h.UserAgent != "" {
+		h.ua()
+	}
+	//
+	//rdb := database.Rdb
+	//rdb.HIncrBy(context.Background(), "test", h.UserAgent, 1)
+
 	mongo := database.MongoDB.Database(ProtocolHTTP)
 	one, err := mongo.Collection(time.Now().Format("C_2006_01_02_15")).InsertOne(context.TODO(), h)
 	if err != nil {
@@ -56,4 +65,11 @@ func (h *Http) Save2Mongo() {
 		return
 	}
 	configs.Log.Debugf("Save2Mongo protol http2mongo id:%s", one.InsertedID)
+}
+
+func (h *Http) ua() {
+	if h.UserAgent != "" {
+		parser := useragent.Parse(h.UserAgent)
+		h.UAParser = fmt.Sprintf("%s|%s", parser.OS, parser.OSVersion)
+	}
 }

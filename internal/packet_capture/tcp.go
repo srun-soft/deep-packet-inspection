@@ -10,6 +10,7 @@ import (
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/record"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,7 +41,7 @@ func (factory *tcpStreamFactory) New(net, transport gopacket.Flow, tcp *layers.T
 	stream := &tcpStream{
 		net:        net,
 		transport:  transport,
-		isHTTP:     factory.doHTTP,
+		isHTTP:     strings.Contains(tcp.DstPort.String(), "80") && factory.doHTTP,
 		isTLS:      tcp.DstPort == 443,
 		reversed:   tcp.SrcPort == 80,
 		tcpstate:   reassembly.NewTCPSimpleFSM(fsmOptions),

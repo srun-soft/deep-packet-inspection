@@ -104,6 +104,9 @@ func init() {
 
 	for packet := range source.Packets() {
 		COUNT++
+		if COUNT == 104 {
+			configs.Log.Info(COUNT)
+		}
 		configs.Log.Infof("Packet Count:%d", COUNT)
 		// network layer
 		var srcIP, dstIP net.IP
