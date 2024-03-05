@@ -10,8 +10,9 @@ var (
 	Log         *logrus.Logger
 	Devices     = flag.String("devices", "", "获取设备列表")
 	NIC         = flag.String("n", "en0", "Network interface controller")
-	OfflineFile = flag.String("f", "", "offline filepath")
+	OfflineFile = flag.String("of", "", "offline filepath")
 	BPF         = flag.String("bpf", "", "Berkeley Packet Filter")
+	FeatureFile = flag.String("ff", "", "Feature filepath")
 
 	Debug  bool
 	OutPut bool

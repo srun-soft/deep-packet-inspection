@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
+	"github.com/srun-soft/dpi-analysis-toolkit/internal/feature"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net"
@@ -28,11 +29,24 @@ type Tls struct {
 	StartTime  time.Time          `bson:"start_time"`
 	EndTime    time.Time          `bson:"end_time"`
 	Delay      time.Duration      `bson:"delay"`
+	App        string             `bson:"app"`
 }
 
 func (h *Tls) Parse() {
 	h.Domain, h.Suffix = utils.ParseHost(h.Host)
 	h.SrcIPStr, h.DstIPStr = h.SrcIP.String(), h.DstIP.String()
+
+	if h.Host != "" {
+		hits := feature.Ac.MatchThreadSafe([]byte(h.Host))
+		if hits == nil {
+			return
+		}
+		if name, ok := feature.HostMap[hits[0]]; ok {
+			//fmt.Println(name)
+			h.App = name
+		}
+	}
+
 }
 
 func (h *Tls) Save2Mongo() {

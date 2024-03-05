@@ -6,6 +6,7 @@ import (
 	"github.com/mileusna/useragent"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/database"
+	"github.com/srun-soft/dpi-analysis-toolkit/internal/feature"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net"
@@ -35,6 +36,7 @@ type Http struct {
 	UserAgent     string             `bson:"user_agent"`
 	UAParser      string             `bson:"ua_parser"`
 	Delay         time.Duration      `bson:"delay"`
+	App           string             `bson:"app"`
 }
 
 func (h *Http) Parse() {
@@ -46,6 +48,16 @@ func (h *Http) Parse() {
 	}
 	h.Domain, h.Suffix = utils.ParseHost(h.Host)
 	h.SrcIPStr, h.DstIPStr = h.SrcIP.String(), h.DstIP.String()
+	if h.Host != "" {
+		hits := feature.Ac.MatchThreadSafe([]byte(h.Host))
+		if hits == nil {
+			return
+		}
+		if name, ok := feature.HostMap[hits[0]]; ok {
+			//fmt.Println(name)
+			h.App = name
+		}
+	}
 }
 
 func (h *Http) Save2Mongo() {
