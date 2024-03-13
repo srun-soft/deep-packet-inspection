@@ -104,7 +104,7 @@ func init() {
 
 	for packet := range source.Packets() {
 		COUNT++
-		if COUNT == 104 {
+		if COUNT == 300 {
 			configs.Log.Info(COUNT)
 		}
 		configs.Log.Infof("Packet Count:%d", COUNT)
@@ -163,19 +163,20 @@ func init() {
 		// TCP 流重组
 		// ----------------------------
 		if configs.TCP {
-			tcp := packet.Layer(layers.LayerTypeTCP)
-			if tcp != nil {
-				tcp := tcp.(*layers.TCP)
-				err := tcp.SetNetworkLayerForChecksum(packet.NetworkLayer())
-				if err != nil {
-					configs.Log.Fatalf("Failed to set network layer for checksum: %s\n", err)
-				}
-				c := Context{
-					CaptureInfo: packet.Metadata().CaptureInfo,
-				}
-				stats.totalsz += len(tcp.Payload)
-				assembler.AssembleWithContext(packet.NetworkLayer().NetworkFlow(), tcp, &c)
+			tcpLayer := packet.Layer(layers.LayerTypeTCP)
+			if tcpLayer == nil {
+				continue
 			}
+			tcp := tcpLayer.(*layers.TCP)
+			err = tcp.SetNetworkLayerForChecksum(packet.NetworkLayer())
+			if err != nil {
+				configs.Log.Fatalf("Failed to set network layer for checksum: %s\n", err)
+			}
+			c := Context{
+				CaptureInfo: packet.Metadata().CaptureInfo,
+			}
+			stats.totalsz += len(tcp.Payload)
+			assembler.AssembleWithContext(packet.NetworkLayer().NetworkFlow(), tcp, &c)
 		}
 		// ----------------------------
 		// DNS 分析

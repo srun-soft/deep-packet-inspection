@@ -1,7 +1,6 @@
 package packet_capture
 
 import (
-	"encoding/hex"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -34,8 +33,9 @@ type tcpStreamFactory struct {
 
 func (factory *tcpStreamFactory) New(net, transport gopacket.Flow, tcp *layers.TCP, ac reassembly.AssemblerContext) reassembly.Stream {
 	configs.Log.WithFields(logrus.Fields{
-		"net":       net,
-		"transport": transport,
+		"net":          net,
+		"transport":    transport,
+		"packetCounts": COUNT,
 	}).Info("* NEW:")
 	fsmOptions := reassembly.TCPSimpleFSMOptions{SupportMissingEstablishment: true}
 	stream := &tcpStream{
@@ -210,8 +210,8 @@ func (t *tcpStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 	data := sg.Fetch(length)
 	if t.isHTTP {
 		if length > 0 {
-			configs.Log.Debugf("Feeding http with:\n%s", hex.Dump(data))
-			if dir == reassembly.TCPDirClientToServer && !t.reversed {
+			// configs.Log.Debugf("Feeding http with:\n%s", hex.Dump(data))
+			if dir == reassembly.TCPDirClientToServer {
 				t.client.bytes <- data
 			} else {
 				t.server.bytes <- data
