@@ -2,11 +2,11 @@ package packet_capture
 
 import (
 	"bufio"
-	"errors"
+	"bytes"
+	"encoding/hex"
 	"github.com/srun-soft/dpi-analysis-toolkit/configs"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 )
 
@@ -25,15 +25,19 @@ var Methods = []string{
 }
 
 type StreamReader struct {
-	parent *TCPStream
-	bytes  chan []byte
-	data   []byte
-	ident  string
-	src    string
-	dst    string
+	parent   *TCPStream
+	isClient bool
+	bytes    chan []byte
+	data     []byte
+	ident    string
+	src      string
+	dst      string
+	srcPort  string
+	dstPort  string
+	protocol string
 }
 
-func (s StreamReader) Read(p []byte) (n int, err error) {
+func (s *StreamReader) Read(p []byte) (n int, err error) {
 	ok := true
 	for ok && len(s.data) == 0 {
 		s.data, ok = <-s.bytes
@@ -47,27 +51,34 @@ func (s StreamReader) Read(p []byte) (n int, err error) {
 	return l, nil
 }
 
-func (s StreamReader) run(wg *sync.WaitGroup) {
+func (s *StreamReader) run(wg *sync.WaitGroup) {
 	defer wg.Done()
-	r := bufio.NewReader(s)
+	b := bufio.NewReader(s)
+
+	prefix, _ := b.Peek(12)
+	if len(prefix) > 0 && checkHttpProtocol(prefix) {
+		configs.Log.Info("Client bytes:\n", hex.Dump(prefix))
+		s.protocol = "http"
+	}
 	for {
-		line, err := r.ReadString('\n')
-		if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) {
-			break
-		}
-		if err != nil {
-			break
-		}
-		configs.Log.Info(line)
-		if checkProtocolHttp(line) {
-			configs.Log.Info("line ===> ", line)
+		if s.isClient {
+			// Client -> Server
+			switch s.protocol {
+			case "http":
+			case "tls":
+
+			}
+			//req, err := http.ReadRequest(b)
+		} else {
+			// Server -> Client
+			_, _ = b.ReadBytes('\n')
 		}
 	}
 }
 
-func checkProtocolHttp(line string) bool {
+func checkHttpProtocol(line []byte) bool {
 	for _, method := range Methods {
-		if strings.HasPrefix(line, method) {
+		if bytes.HasPrefix(line, []byte(method)) {
 			return true
 		}
 	}

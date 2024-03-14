@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/sirupsen/logrus"
 	"github.com/srun-soft/dpi-analysis-toolkit/internal/ethernet"
+	_ "net/http/pprof"
 )
 
 var (
@@ -42,4 +43,10 @@ func init() {
 			ethernet.All()
 		}
 	}
+
+	//go func() {
+	//	if err := http.ListenAndServe(":6060", nil); err != nil {
+	//		panic(err)
+	//	}
+	//}()
 }

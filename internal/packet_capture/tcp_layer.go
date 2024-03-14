@@ -18,13 +18,14 @@ type TCPStream struct {
 	server         StreamReader
 	urls           []string
 	ident          string
+	streams        []byte
 	sync.Mutex
 }
 
 func (t *TCPStream) Accept(tcp *layers.TCP, ci gopacket.CaptureInfo, dir reassembly.TCPFlowDirection, nextSeq reassembly.Sequence, start *bool, ac reassembly.AssemblerContext) bool {
 	// FSM
 	if !t.tcpstate.CheckState(tcp, dir) {
-		configs.Log.Errorf("FSM", "%s: Packet rejected by FSM (state:%s)\n", t.ident, t.tcpstate.String())
+		configs.Log.Errorf("FSM %s: Packet rejected by FSM (state:%s)\n", t.ident, t.tcpstate.String())
 		stats.rejectFsm++
 		if !t.fsmerr {
 			t.fsmerr = true
@@ -39,17 +40,17 @@ func (t *TCPStream) Accept(tcp *layers.TCP, ci gopacket.CaptureInfo, dir reassem
 	}
 	// Checksum
 	accept := true
-	//c, err := tcp.ComputeChecksum()
-	//if err != nil {
-	//	configs.Log.Error("ChecksumCompute", "%s: Got error computing checksum: %s\n", t.ident, err)
-	//	accept = false
-	//} else if c != 0x0 {
-	//	configs.Log.Error("Checksum", "%s: Invalid checksum: 0x%x\n", t.ident, c)
-	//	accept = false
-	//}
-	//if !accept {
-	//	stats.rejectOpt++
-	//}
+	c, err := tcp.ComputeChecksum()
+	if err != nil {
+		configs.Log.Errorf("ChecksumCompute %s: Got error computing checksum: %s\n", t.ident, err)
+		accept = false
+	} else if c != 0x0 {
+		configs.Log.Errorf("Checksum %s: Invalid checksum: 0x%x\n", t.ident, c)
+		accept = false
+	}
+	if !accept {
+		stats.rejectOpt++
+	}
 	return accept
 }
 
@@ -76,8 +77,7 @@ func (t *TCPStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 	}
 	if sgStats.OverlapBytes != 0 && sgStats.OverlapPackets == 0 {
 		fmt.Printf("bytes:%d, pkts:%d\n", sgStats.OverlapBytes, sgStats.OverlapPackets)
-		//panic("Invalid overlap")
-
+		panic("Invalid overlap")
 	}
 	stats.overlapBytes += sgStats.OverlapBytes
 	stats.overlapPackets += sgStats.OverlapPackets
@@ -88,7 +88,7 @@ func (t *TCPStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 	} else {
 		ident = fmt.Sprintf("%v %v(%s): ", t.net.Reverse(), t.transport.Reverse(), dir)
 	}
-	configs.Log.Debug("%s: SG reassembled packet with %d bytes (start:%v,end:%v,skip:%d,saved:%d,nb:%d,%d,overlap:%d,%d)\n", ident, length, start, end, skip, saved, sgStats.Packets, sgStats.Chunks, sgStats.OverlapBytes, sgStats.OverlapPackets)
+	configs.Log.Debugf("%s: SG reassembled packet with %d bytes (start:%v,end:%v,skip:%d,saved:%d,nb:%d,%d,overlap:%d,%d)\n", ident, length, start, end, skip, saved, sgStats.Packets, sgStats.Chunks, sgStats.OverlapBytes, sgStats.OverlapPackets)
 	if skip == -1 {
 		// this is allowed
 	} else if skip != 0 {
@@ -96,18 +96,20 @@ func (t *TCPStream) ReassembledSG(sg reassembly.ScatterGather, ac reassembly.Ass
 		return
 	}
 	data := sg.Fetch(length)
-	configs.Log.Warnf("data length ===> %d", length)
+	configs.Log.WithField("Data Length", length).Warn()
 	if length > 0 {
 		if dir == reassembly.TCPDirClientToServer {
 			t.client.bytes <- data
+			configs.Log.WithField("Push2Client", length).Warn()
 		} else {
 			t.server.bytes <- data
+			configs.Log.WithField("Push2Server", length).Warn()
 		}
 	}
 }
 
 func (t *TCPStream) ReassemblyComplete(ac reassembly.AssemblerContext) bool {
-	configs.Log.Debug("%s: Connection closed\n", t.ident)
+	configs.Log.Debugf("%s: Connection closed\n", t.ident)
 	close(t.client.bytes)
 	close(t.server.bytes)
 	return false
